@@ -12,3 +12,7 @@ def gather_go_codec():
     go test
     """
     pass
+
+
+if __name__ == '__main__':
+    gather_go_codec()
