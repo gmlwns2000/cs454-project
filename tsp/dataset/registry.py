@@ -1,1 +1,1 @@
-from .go_codec import process as go_codec_process
+from .libraries.go_codec import process as go_codec_process
