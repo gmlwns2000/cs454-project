@@ -88,3 +88,6 @@ func doTestNextValueBytes(t *testing.T, h Handle) {
         ...
     }
 ]
+
+def process():
+    pass
