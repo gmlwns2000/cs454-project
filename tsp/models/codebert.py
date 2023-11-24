@@ -1,7 +1,14 @@
+from cProfile import label
+from dataclasses import dataclass
 from typing import Optional
-from torch import nn, relu
+from torch import logit, nn, relu
 import torch
 import transformers
+
+@dataclass
+class TestPredictorOutput:
+    loss: torch.Tensor
+    logits: torch.Tensor
 
 class CodeBertTestPredictor(nn.Module):
     def __init__(self):
@@ -10,9 +17,10 @@ class CodeBertTestPredictor(nn.Module):
         self.bert = transformers.AutoModel.from_pretrained('codistai/codeBERT-small-v2')
         
         self.past_commit_state_encoder = nn.Linear(3, 16)
+        self.past_commit_encoder_cls_token = nn.Parameter(torch.randn((1, 1, 768+16)))
         self.past_commit_encoder = nn.LSTM(768+16, 128, 1, batch_first=True)
         
-        self.now_commit_encoder = nn.Sequential(
+        self.current_commit_encoder = nn.Sequential(
             nn.Linear(768, 128),
         )
         
@@ -31,4 +39,54 @@ class CodeBertTestPredictor(nn.Module):
         attention_mask: torch.Tensor,
         labels: Optional[torch.Tensor],
     ) -> torch.Tensor:
-        pass
+        N, WIND, PTOK = past_commit_input_ids.shape
+        assert past_commit_states.shape == (N, WIND, 3)
+        
+        # encode each past commit's prompts
+        p_input_ids = past_commit_input_ids.view(N*WIND, PTOK)
+        p_masks = past_commit_attention_masks.view(N*WIND, PTOK)
+        p_bert_output = self.bert(
+            input_ids=p_input_ids,
+            attention_mask=p_masks
+        )
+        p_bert_output = p_bert_output.last_hidden_state[:, 0, :]
+        p_bert_output = p_bert_output.view(N, WIND, -1)
+        
+        # encode each past commit's states (0: not bug, 1: bug, 2: unknown)
+        p_states = self.past_commit_state_encoder(past_commit_states)
+        
+        # construct input of sequential encoder
+        p_commits = torch.cat([p_bert_output, p_states], dim=-1)
+        p_commits = torch.cat([
+            p_commits, 
+            self.past_commit_encoder_cls_token.expand(N, 1, -1)
+        ], dim=1)
+        
+        # perform lstm to encode p_commits into single vector
+        p_encodings = self.past_commit_encoder(p_commits)
+        p_encodings = p_encodings[:, -1, :]
+        
+        # encode current commit's prompts
+        c_bert_output = self.bert(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )
+        c_bert_output = c_bert_output.last_hidden_state[:, 0, :]
+        
+        # encode bert output into fixed size vector
+        c_encodings = self.current_commit_encoder(c_bert_output)
+        
+        encodings = torch.cat([p_encodings, c_encodings], dim=-1)
+        logits = self.classifier(encodings)
+        
+        loss = None
+        if labels is not None:
+            loss = nn.functional.binary_cross_entropy_with_logits(
+                input=logits,
+                target=labels,
+            )
+        
+        return TestPredictorOutput(
+            loss=loss,
+            logits=logits
+        )

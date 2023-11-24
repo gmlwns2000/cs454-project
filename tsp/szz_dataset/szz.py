@@ -19,7 +19,7 @@ def collate_input_ids(input_ids: List[torch.Tensor], pad_token_id: int):
     return output_ids, output_masks
 
 class SZZDataset(Dataset):
-    def __init__(self, path, tokenizer: transformers.AutoTokenizer, max_seq_len: int = 1024):
+    def __init__(self, path, tokenizer: transformers.AutoTokenizer, max_seq_len: int = 1023):
         self.path = path
         self.window = 100
         
@@ -131,7 +131,7 @@ def collate_fn(pad_token_id, items):
         'labels': labels,
     }
 
-def get_dataloaders(path, batch_size, tokenizer, max_seq_len=1024, seed=42, num_workers=4):
+def get_dataloaders(path, batch_size, tokenizer, max_seq_len=1023, seed=42, num_workers=4):
     ds = SZZDataset(path, tokenizer, max_seq_len)
     generator = torch.Generator().manual_seed(seed)
     train_ds, valid_ds = random_split(ds, [0.9, 0.1], generator=generator)
