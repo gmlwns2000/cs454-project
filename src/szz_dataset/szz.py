@@ -168,7 +168,7 @@ def get_dataloaders(path, batch_size, tokenizer, window_size=100, max_seq_len=10
 if __name__ == '__main__':
     import transformers
     tokenizer = transformers.AutoTokenizer.from_pretrained('codistai/codeBERT-small-v2')
-    train, valid = get_dataloaders('./tsp/szz_dataset/sample_data.json', 4, tokenizer)
+    train, valid = get_dataloaders('./src/szz_dataset/sample_data.json', 4, tokenizer)
     print(len(train), len(valid))
     for batch in tqdm.tqdm(train):
         # print(batch)

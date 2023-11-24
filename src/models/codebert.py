@@ -4,33 +4,41 @@ from typing import Optional
 from torch import logit, nn, relu
 import torch
 import transformers
-from tsp.models.modeling_roberta import RobertaModel
+from src.models.modules.modeling_roberta import RobertaModel
+from src.models.base_test_predictor import BaseTestPredictor, TestPredictorOutput
+from src.models.registry import register
 
-@dataclass
-class TestPredictorOutput:
-    loss: torch.Tensor
-    logits: torch.Tensor
-
-class CodeBertTestPredictor(nn.Module):
-    def __init__(self):
-        super().__init__()
+class CodeBertTestPredictor(BaseTestPredictor):
+    def __init__(
+        self,
+        hidden_size=128,
+        state_hidden_size=16,
+        lstm_n_layers=1,
+    ):
+        super().__init__(tokenizer_id='codistai/codeBERT-small-v2')
         
-        # self.bert = transformers.AutoModel.from_pretrained('codistai/codeBERT-small-v2')
         self.bert = RobertaModel.from_pretrained('codistai/codeBERT-small-v2')
         lm_hidden_size = self.bert.config.hidden_size
         
-        self.past_commit_state_encoder = nn.Linear(3, 16)
-        self.past_commit_encoder_cls_token = nn.Parameter(torch.randn((1, 1, lm_hidden_size+16)))
-        self.past_commit_encoder = nn.LSTM(lm_hidden_size+16, 128, 1, batch_first=True)
+        self.past_commit_state_encoder = nn.Linear(3, state_hidden_size)
+        self.past_commit_encoder_cls_token = nn.Parameter(
+            torch.randn((1, 1, lm_hidden_size+state_hidden_size))
+        )
+        self.past_commit_encoder = nn.LSTM(
+            lm_hidden_size+state_hidden_size, 
+            hidden_size, 
+            num_layers=lstm_n_layers, 
+            batch_first=True
+        )
         
         self.current_commit_encoder = nn.Sequential(
-            nn.Linear(lm_hidden_size, 128),
+            nn.Linear(lm_hidden_size, hidden_size),
         )
         
         self.classifier = nn.Sequential(
-            nn.Linear(128+128, 128),
+            nn.Linear(hidden_size+hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(128, 2),
+            nn.Linear(hidden_size, 2),
         )
     
     def forward(
@@ -93,3 +101,11 @@ class CodeBertTestPredictor(nn.Module):
             loss=loss,
             logits=logits
         )
+    
+@register('codebert_test_predictor')
+def codebert_test_predictor():
+    return CodeBertTestPredictor()
+
+@register('codebert_test_predictor_lstm_l2')
+def codebert_test_predictor_lstm_l2():
+    return CodeBertTestPredictor(lstm_n_layers=2)

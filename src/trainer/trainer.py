@@ -1,12 +1,15 @@
 import os
+import argparse
+from dataclasses import asdict, dataclass
 
 import tqdm
-from tsp.models.codebert import CodeBertTestPredictor
-from tsp.szz_dataset.szz import get_dataloaders
-from dataclasses import dataclass
-import transformers
-from torch import nn, optim
+import wandb
 import torch
+from torch import nn, optim
+import transformers
+
+from src.szz_dataset.szz import get_dataloaders
+from src import models
 
 def batch_to(batch, device):
     if isinstance(batch, torch.Tensor):
@@ -28,10 +31,11 @@ class TrainerConfig:
     gradient_accumulation_steps: int = 8
     gradient_checkpointing: bool = True
     lr: int = 1e-5
-    data_path: str = './tsp/szz_dataset/sample_data.json'
-    codebert_model_id: str = 'codistai/codeBERT-small-v2'
+    data_path: str = './src/szz_dataset/sample_data.json'
+    model_id: str = 'codebert_test_predictor'
     experiment_name: str = 'default'
     eval_steps: int = 200
+    wandb_project_name: str = 'cs454'
     dataset_config: DatasetConfig = DatasetConfig()
 
 class Trainer:
@@ -45,12 +49,18 @@ class Trainer:
         self.steps = 0
         self.micro_steps = 0
         
-        self.init_dataloader()
         self.init_model()
+        self.init_dataloader()
         self.init_optimizer()
     
     def init_model(self):
-        self.model = CodeBertTestPredictor().to(self.device).train()
+        model_id = self.config.model_id
+        if models.has_model(model_id):
+            self.model = models.get_model(model_id)
+        else:
+            raise Exception(f'Given model id `{model_id}` is not found. Defined models: {models.list_model()}. Did you register model properly?')
+        
+        self.model = self.model.to(self.device).train()
         for m in self.model.modules():
             if hasattr(m, 'gradient_checkpointing'):
                 m.gradient_checkpointing = self.config.gradient_checkpointing
@@ -59,7 +69,7 @@ class Trainer:
         self.train_loader, self.valid_loader, self.valid_unseen_project = get_dataloaders(
             path=self.config.data_path,
             batch_size=self.config.batch_size,
-            tokenizer=transformers.AutoTokenizer.from_pretrained(self.config.codebert_model_id),
+            tokenizer=transformers.AutoTokenizer.from_pretrained(self.model.tokenizer_id),
             window_size=self.config.dataset_config.window_size,
             valid_ratio=self.config.dataset_config.valid_ratio,
         )
@@ -93,8 +103,10 @@ class Trainer:
     def train_epoch(self):
         self.model.train()
         
+        loss_sum = 0
+        
         with tqdm.tqdm(self.train_loader, dynamic_ncols=True) as pbar:
-            for batch in pbar:
+            for ibatch, batch in enumerate(pbar):
                 batch = batch_to(batch, self.device)
                 
                 with torch.autocast('cuda', torch.float16):
@@ -102,6 +114,7 @@ class Trainer:
                 loss = output.loss
                 
                 self.scaler.scale(loss / self.config.gradient_accumulation_steps).backward()
+                loss_sum += (loss / self.config.gradient_accumulation_steps).item()
                 self.micro_steps += 1
                 
                 if (self.micro_steps % self.config.gradient_accumulation_steps) == 0:
@@ -110,10 +123,20 @@ class Trainer:
                     self.optimizer.zero_grad()
                     self.steps += 1
                     
+                    wandb.log({
+                        'train/loss': loss_sum,
+                        'train/epoch': ibatch / len(pbar) + self.epochs,
+                    }, step=self.steps)
+                    
                     if (self.steps % self.config.eval_steps) == 0:
-                        self.evaluate()
+                        result = self.evaluate()
+                        result_wandb = {f'eval/{item[0]}': item[1] for item in result.items()}
+                        wandb.log(result_wandb, step=self.steps)
+                        
                         self.save()
                         self.model.train()
+                    
+                    loss_sum = 0
                 
                 pbar.set_description(f'[{self.epochs+1}/{self.config.epochs}] L:{loss:.6f}')
     
@@ -161,7 +184,12 @@ class Trainer:
         )
     
     def main(self):
-        self.evaluate()
+        # self.evaluate()
+        
+        wandb.init(
+            project=self.config.wandb_project_name,
+            config=asdict(self.config),
+        )
         
         accuracies = []
         for i in range(self.config.epochs):
@@ -171,9 +199,46 @@ class Trainer:
             
             acc = self.evaluate()
             self.save()
+            
+            result_wandb = {f'eval/{item[0]}': item[1] for item in acc.items()}
+            wandb.log(result_wandb, step=self.steps)
+            
             accuracies.append(acc)
+        
+        print('-'*40)
+        print('- Summary')
+        print('-'*40)
+        
+        for i in range(len(accuracies)):
+            print(f'epoch {i+1}', accuracies[i])
+        
         return accuracies
 
 if __name__ == '__main__':
-    trainer = Trainer()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--model', 
+        type=str, 
+        default='codebert_test_predictor', 
+        choices=models.list_model()
+    )
+    parser.add_argument(
+        '--data_path',
+        type=str,
+        default='./src/szz_dataset/sample_data.json'
+    )
+    parser.add_argument(
+        '--experiment_name',
+        type=str,
+        default='default',
+    )
+    
+    args = parser.parse_args()
+    
+    config = TrainerConfig(
+        model_id=args.model,
+        data_path=args.data_path,
+        experiment_name=args.experiment_name,
+    )
+    trainer = Trainer(config=config)
     trainer.main()

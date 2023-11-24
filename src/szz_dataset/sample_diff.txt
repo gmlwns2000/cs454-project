@@ -1,7 +1,7 @@
-diff --git a/tsp/dataset/libraries/go_codec.py b/tsp/dataset/libraries/go_codec.py
+diff --git a/src/dataset/libraries/go_codec.py b/src/dataset/libraries/go_codec.py
 index 96f662e..e3972e3 100644
---- a/tsp/dataset/libraries/go_codec.py
-+++ b/tsp/dataset/libraries/go_codec.py
+--- a/src/dataset/libraries/go_codec.py
++++ b/src/dataset/libraries/go_codec.py
 @@ -13,81 +13,96 @@ for commit in list:
  """
  
@@ -163,10 +163,10 @@ index 96f662e..e3972e3 100644
 +    """
      pass
 \ No newline at end of file
-diff --git a/tsp/main/gather_datasets.py b/tsp/main/gather_datasets.py
+diff --git a/src/main/gather_datasets.py b/src/main/gather_datasets.py
 index 03995d3..0b770f9 100644
---- a/tsp/main/gather_datasets.py
-+++ b/tsp/main/gather_datasets.py
+--- a/src/main/gather_datasets.py
++++ b/src/main/gather_datasets.py
 @@ -3,16 +3,5 @@ import os
  os.makedirs('cache/repos')
  os.makedirs('cache/dataset')
