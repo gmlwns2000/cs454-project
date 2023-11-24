@@ -12,7 +12,7 @@ with open('sample_diff.txt', 'r') as f:
 data = {}
 for project in ['foo', 'bar', 'hello', 'world', 'this', 'is', 'the', 'cat']:
     commits = []
-    for i in range(1000):
+    for i in range(random.randint(100, 2000)):
         commits.append({
             'text': DUMMY_TEXT[:random.randint(50, len(DUMMY_TEXT))],
             'is_buggy': 1 if random.random() < 0.1 else 0,

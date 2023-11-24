@@ -33,7 +33,7 @@ class SZZDataset(Dataset):
         with open(path, 'r') as f:
             data = json.load(f)
         # put number of entries in front of project name, so we can sort the project ascending order of size.
-        self.data = []
+        self.data = {}
         for k, v in data.items():
             self.data[f'{str(len(v)).zfill(9)}_{k}'] = v
             assert len(v) <= 999999999
