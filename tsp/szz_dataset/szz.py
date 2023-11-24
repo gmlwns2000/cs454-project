@@ -96,17 +96,47 @@ class SZZDataset(Dataset):
             'label': label
         }
 
-def collate_fn(pad_token_id, items):
-    batch = {}
-    past_commit_states = torch.stack([item['past_commit_states'] for item in items], dim=0)
-    past_commit_input_ids = torch.stack([item['past_commit_input_ids'] for item in items])
+import torch.nn.functional as F
 
-def get_dataloaders(path, batch_size, tokenizer, max_seq_len=1024, seed=42):
+def collate_fn(pad_token_id, items):
+    past_commit_states = torch.stack([item['past_commit_states'] for item in items], dim=0)
+    past_commit_input_ids_max_len = max([item['past_commit_input_ids'].shape[-1] for item in items])
+    past_commit_input_ids = torch.stack([
+        F.pad(
+            item['past_commit_input_ids'].unsqueeze(0), 
+            pad=(0, past_commit_input_ids_max_len-item['past_commit_input_ids'].shape[-1]), 
+            mode='constant', 
+            value=pad_token_id
+        ).squeeze(0) 
+        for item in items
+    ])
+    past_commit_attention_masks = torch.stack([
+        F.pad(
+            item['past_commit_attention_masks'].unsqueeze(0), 
+            pad=(0, past_commit_input_ids_max_len-item['past_commit_attention_masks'].shape[-1]), 
+            mode='constant', 
+            value=0
+        ).squeeze(0) 
+        for item in items
+    ])
+    input_ids, attention_mask = collate_input_ids([item['input_ids'] for item in items], pad_token_id=pad_token_id)
+    labels = torch.tensor([item['label'] for item in items])
+    
+    return {
+        'past_commit_states': past_commit_states,
+        'past_commit_input_ids': past_commit_input_ids,
+        'past_commit_attention_masks': past_commit_attention_masks,
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'labels': labels,
+    }
+
+def get_dataloaders(path, batch_size, tokenizer, max_seq_len=1024, seed=42, num_workers=4):
     ds = SZZDataset(path, tokenizer, max_seq_len)
     generator = torch.Generator().manual_seed(seed)
     train_ds, valid_ds = random_split(ds, [0.9, 0.1], generator=generator)
-    train_loader = DataLoader(train_ds, batch_size, shuffle=True, collate_fn=lambda x: collate_fn(ds.pad_token_id, x))
-    valid_loader = DataLoader(valid_ds, batch_size, shuffle=False, collate_fn=lambda x: collate_fn(ds.pad_token_id, x))
+    train_loader = DataLoader(train_ds, batch_size, shuffle=True, collate_fn=lambda x: collate_fn(ds.pad_token_id, x), num_workers=num_workers)
+    valid_loader = DataLoader(valid_ds, batch_size, shuffle=False, collate_fn=lambda x: collate_fn(ds.pad_token_id, x), num_workers=num_workers)
     return train_loader, valid_loader
 
 if __name__ == '__main__':
@@ -114,5 +144,13 @@ if __name__ == '__main__':
     tokenizer = transformers.AutoTokenizer.from_pretrained('codistai/codeBERT-small-v2')
     train, valid = get_dataloaders('./tsp/szz_dataset/sample_data.json', 4, tokenizer)
     print(len(train), len(valid))
-    for batch in train:
-        print(batch['input_ids'].shape)
+    for batch in tqdm.tqdm(train):
+        # print(batch)
+        # input()
+        # print(batch['input_ids'].shape)
+        pass
+    for batch in tqdm.tqdm(valid):
+        # print(batch)
+        # input()
+        # print(batch['input_ids'].shape)
+        pass
