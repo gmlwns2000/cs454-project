@@ -17,15 +17,22 @@ def batch_to(batch, device):
         raise Exception()
 
 @dataclass
+class DatasetConfig:
+    window_size: int = 40
+    valid_ratio: float = 0.05
+
+@dataclass
 class TrainerConfig:
     epochs: int = 20
     batch_size: int = 1
     gradient_accumulation_steps: int = 8
+    gradient_checkpointing: bool = True
     lr: int = 1e-5
     data_path: str = './tsp/szz_dataset/sample_data.json'
     codebert_model_id: str = 'codistai/codeBERT-small-v2'
     experiment_name: str = 'default'
-    eval_steps: int = 100
+    eval_steps: int = 200
+    dataset_config: DatasetConfig = DatasetConfig()
 
 class Trainer:
     def __init__(self, config=None, device=0):
@@ -46,13 +53,15 @@ class Trainer:
         self.model = CodeBertTestPredictor().to(self.device).train()
         for m in self.model.modules():
             if hasattr(m, 'gradient_checkpointing'):
-                m.gradient_checkpointing = True
+                m.gradient_checkpointing = self.config.gradient_checkpointing
     
     def init_dataloader(self):
-        self.train_loader, self.valid_loader = get_dataloaders(
+        self.train_loader, self.valid_loader, self.valid_unseen_project = get_dataloaders(
             path=self.config.data_path,
             batch_size=self.config.batch_size,
             tokenizer=transformers.AutoTokenizer.from_pretrained(self.config.codebert_model_id),
+            window_size=self.config.dataset_config.window_size,
+            valid_ratio=self.config.dataset_config.valid_ratio,
         )
     
     def init_optimizer(self):
@@ -103,17 +112,28 @@ class Trainer:
                     
                     if (self.steps % self.config.eval_steps) == 0:
                         self.evaluate()
+                        self.save()
                         self.model.train()
                 
                 pbar.set_description(f'[{self.epochs+1}/{self.config.epochs}] L:{loss:.6f}')
     
-    def evaluate(self):
+    def evaluate_subset(self, subset='valid'):
         self.model.eval()
+        
+        loader = None
+        if subset == 'train':
+            loader = self.train_loader
+        elif subset == 'valid':
+            loader = self.valid_loader
+        elif subset == 'valid_unseen_project':
+            loader = self.valid_unseen_project
+        else:
+            raise Exception()
         
         loss_sum = 0
         acc_sum = 0
         count = 0
-        for batch in tqdm.tqdm(self.valid_loader, dynamic_ncols=True):
+        for batch in tqdm.tqdm(loader, dynamic_ncols=True, desc=subset):
             batch = batch_to(batch, self.device)
             
             with torch.no_grad(), torch.autocast('cuda', torch.float16):
@@ -122,20 +142,35 @@ class Trainer:
             loss_sum += loss.item() * len(batch['input_ids'])
             
             label = batch['labels']
-            acc_sum += (torch.argmax(output.logits, dim=-1, keepdim=False).indices == label).float().sum().item()
+            acc_sum += ((torch.argmax(output.logits, dim=-1, keepdim=False) == label) * 1.0).sum().item()
             count += len(batch['input_ids'])
         
-        return {
+        result = {
             'loss': loss_sum / count,
             'accuracy': acc_sum / count,
         }
+        
+        return result
+    
+    def evaluate(self):
+        result_valid = self.evaluate_subset('valid')
+        result_valid_unseen_project = self.evaluate_subset('valid_unseen_project')
+        print(
+            f'epoch={self.epochs}, steps={self.steps} (micro_steps={self.micro_steps}) | '
+            f'result@valid={result_valid}, result@unseen_valid={result_valid_unseen_project}'
+        )
     
     def main(self):
+        self.evaluate()
+        
         accuracies = []
         for i in range(self.config.epochs):
             self.epochs = i
+            
             self.train_epoch()
+            
             acc = self.evaluate()
+            self.save()
             accuracies.append(acc)
         return accuracies
 

@@ -1,6 +1,5 @@
 import json
 import os
-from random import shuffle
 from typing import List
 import torch
 from torch.utils.data import Dataset, random_split, DataLoader
@@ -19,13 +18,34 @@ def collate_input_ids(input_ids: List[torch.Tensor], pad_token_id: int):
     return output_ids, output_masks
 
 class SZZDataset(Dataset):
-    def __init__(self, path, tokenizer: transformers.AutoTokenizer, max_seq_len: int = 1022):
+    def __init__(
+        self, 
+        path, 
+        tokenizer: transformers.AutoTokenizer, 
+        max_seq_len: int = 1022, 
+        project_split = 'train', 
+        project_split_num_valid = 1, 
+        window_size = 100
+    ):
         self.path = path
-        self.window = 100
+        self.window = window_size
         
         with open(path, 'r') as f:
-            self.data = json.load(f)
+            data = json.load(f)
+        # put number of entries in front of project name, so we can sort the project ascending order of size.
+        self.data = []
+        for k, v in data.items():
+            self.data[f'{str(len(v)).zfill(9)}_{k}'] = v
+            assert len(v) <= 999999999
+        
         self.projects = list(sorted(list(self.data.keys())))
+        projects_train, projects_valid = self.projects[project_split_num_valid:], self.projects[:project_split_num_valid]
+        if project_split == 'train':
+            self.projects = projects_train
+        elif project_split == 'valid':
+            self.projects = projects_valid
+        else:
+            raise Exception()
         
         self.count = 0
         self.index_to_project = []
@@ -131,13 +151,17 @@ def collate_fn(pad_token_id, items):
         'labels': labels,
     }
 
-def get_dataloaders(path, batch_size, tokenizer, max_seq_len=1022, seed=42, num_workers=4):
-    ds = SZZDataset(path, tokenizer, max_seq_len)
+def get_dataloaders(path, batch_size, tokenizer, window_size=100, max_seq_len=1022, seed=42, num_workers=4, valid_ratio=0.05):
+    ds = SZZDataset(path, tokenizer, max_seq_len, window_size=window_size)
     generator = torch.Generator().manual_seed(seed)
-    train_ds, valid_ds = random_split(ds, [0.9, 0.1], generator=generator)
+    train_ds, valid_ds = random_split(ds, [1-valid_ratio, valid_ratio], generator=generator)
     train_loader = DataLoader(train_ds, batch_size, shuffle=True, collate_fn=lambda x: collate_fn(ds.pad_token_id, x), num_workers=num_workers)
     valid_loader = DataLoader(valid_ds, batch_size, shuffle=False, collate_fn=lambda x: collate_fn(ds.pad_token_id, x), num_workers=num_workers)
-    return train_loader, valid_loader
+    
+    valid_unseen_project_ds = SZZDataset(path, tokenizer, max_seq_len, project_split='valid', window_size=window_size)
+    valid_unseen_project_loader = DataLoader(valid_unseen_project_ds, batch_size, shuffle=False, collate_fn=lambda x: collate_fn(ds.pad_token_id, x), num_workers=num_workers)
+    
+    return train_loader, valid_loader, valid_unseen_project_loader
 
 if __name__ == '__main__':
     import transformers
