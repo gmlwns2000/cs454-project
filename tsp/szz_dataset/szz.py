@@ -27,6 +27,8 @@ class SZZDataset(Dataset):
         project_split_num_valid = 1, 
         window_size = 100
     ):
+        os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+        
         self.path = path
         self.window = window_size
         
