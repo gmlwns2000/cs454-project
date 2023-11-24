@@ -20,7 +20,7 @@ class CodeBertTestPredictor(BaseTestPredictor):
         self.bert = RobertaModel.from_pretrained('codistai/codeBERT-small-v2')
         lm_hidden_size = self.bert.config.hidden_size
         
-        self.past_commit_state_encoder = nn.Linear(3, state_hidden_size)
+        self.past_commit_state_encoder = nn.Linear(2, state_hidden_size)
         self.past_commit_encoder_cls_token = nn.Parameter(
             torch.randn((1, 1, lm_hidden_size+state_hidden_size))
         )

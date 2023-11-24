@@ -95,10 +95,10 @@ class SZZDataset(Dataset):
             if past_commit['reported_index'] < index:
                 past_commit_states.append(int(past_commit['is_buggy']))
             else:
-                past_commit_states.append(2)
+                past_commit_states.append(0)
             past_commit_input_ids.append(past_commit['input_ids'])
         past_commit_input_ids, past_commit_attention_masks = collate_input_ids(past_commit_input_ids, pad_token_id=self.pad_token_id)
-        past_commit_states_pt = torch.zeros((len(past_commit_states), 3))
+        past_commit_states_pt = torch.zeros((len(past_commit_states), 2))
         past_commit_states_pt.scatter_(
             dim=1, 
             index=torch.tensor(past_commit_states, dtype=torch.int64).unsqueeze(-1), 
