@@ -14,7 +14,7 @@ for project in ['foo', 'bar', 'hello', 'world', 'this', 'is', 'the', 'cat']:
     commits = []
     for i in range(1000):
         commits.append({
-            'text': DUMMY_TEXT,
+            'text': DUMMY_TEXT[:random.randint(50, len(DUMMY_TEXT))],
             'is_buggy': 1 if random.random() < 0.1 else 0,
             'index': i,
             'reported_index': i + random.randint(2, 30),
