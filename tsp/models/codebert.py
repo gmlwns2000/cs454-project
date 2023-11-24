@@ -4,6 +4,7 @@ from typing import Optional
 from torch import logit, nn, relu
 import torch
 import transformers
+from tsp.models.modeling_roberta import RobertaModel
 
 @dataclass
 class TestPredictorOutput:
@@ -14,14 +15,16 @@ class CodeBertTestPredictor(nn.Module):
     def __init__(self):
         super().__init__()
         
-        self.bert = transformers.AutoModel.from_pretrained('codistai/codeBERT-small-v2')
+        # self.bert = transformers.AutoModel.from_pretrained('codistai/codeBERT-small-v2')
+        self.bert = RobertaModel.from_pretrained('codistai/codeBERT-small-v2')
+        lm_hidden_size = self.bert.config.hidden_size
         
         self.past_commit_state_encoder = nn.Linear(3, 16)
-        self.past_commit_encoder_cls_token = nn.Parameter(torch.randn((1, 1, 768+16)))
-        self.past_commit_encoder = nn.LSTM(768+16, 128, 1, batch_first=True)
+        self.past_commit_encoder_cls_token = nn.Parameter(torch.randn((1, 1, lm_hidden_size+16)))
+        self.past_commit_encoder = nn.LSTM(lm_hidden_size+16, 128, 1, batch_first=True)
         
         self.current_commit_encoder = nn.Sequential(
-            nn.Linear(768, 128),
+            nn.Linear(lm_hidden_size, 128),
         )
         
         self.classifier = nn.Sequential(
@@ -63,7 +66,7 @@ class CodeBertTestPredictor(nn.Module):
         ], dim=1)
         
         # perform lstm to encode p_commits into single vector
-        p_encodings = self.past_commit_encoder(p_commits)
+        p_encodings, _lstm_state = self.past_commit_encoder(p_commits)
         p_encodings = p_encodings[:, -1, :]
         
         # encode current commit's prompts
@@ -81,7 +84,7 @@ class CodeBertTestPredictor(nn.Module):
         
         loss = None
         if labels is not None:
-            loss = nn.functional.binary_cross_entropy_with_logits(
+            loss = nn.functional.cross_entropy(
                 input=logits,
                 target=labels,
             )
