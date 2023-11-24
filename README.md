@@ -42,7 +42,7 @@ def your_model_name_and_other_options():
 After create register function, you have to import your model file in `src/models/__init__.py`.
 
 ```py
-from .__your_model_file__ import YourModel
+from .__your_model__ import YourModel
 ```
 
 3. Now your model is visible in trainer.
