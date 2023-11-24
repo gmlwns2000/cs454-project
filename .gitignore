@@ -30,3 +30,4 @@ src/utils/secrets.*
 plots/
 submission/
 submission*.zip
+sample_data.json

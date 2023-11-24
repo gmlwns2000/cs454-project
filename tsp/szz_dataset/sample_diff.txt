@@ -1,0 +1,187 @@
+diff --git a/tsp/dataset/libraries/go_codec.py b/tsp/dataset/libraries/go_codec.py
+index 96f662e..e3972e3 100644
+--- a/tsp/dataset/libraries/go_codec.py
++++ b/tsp/dataset/libraries/go_codec.py
+@@ -13,81 +13,96 @@ for commit in list:
+ """
+ 
+ [
++    ... # timestamp == ascending order
+     "f97a5920a89ab6060b49c823007c47d811f4d050": {
+-        'TestJsonNextValueBytes': {
+-            'result': False,
+-            'stdout': "codec_test.go:444: recovered error: runtime error: invalid memory address or nil pointer dereference", 
+-            'stacktrace': "...",
+-            'test_code': """
+-func TestJsonNextValueBytes(t *testing.T) {
+-	doTestNextValueBytes(t, testJsonH)
+-}
++        'info': {
++			'message': 'bug: fix hello world',
++			'timestamp': 1,
++			'diff': """output of git diff for each commit""",
++		}, 
++        'tests': {
++			'TestJsonNextValueBytes': {
++				'pass': False,
++				'stdout': "codec_test.go:444: recovered error: runtime error: invalid memory address or nil pointer dereference", 
++				'stacktrace': "stacktrace of each test case",
++				'test_code': """
++					func TestJsonNextValueBytes(t *testing.T) {
++						doTestNextValueBytes(t, testJsonH)
++					}
+ 
+-func doTestNextValueBytes(t *testing.T, h Handle) {
+-	defer testSetup(t)()
++					func doTestNextValueBytes(t *testing.T, h Handle) {
++						defer testSetup(t)()
+ 
+-	bh := testBasicHandle(h)
++						bh := testBasicHandle(h)
+ 
+-	// - encode uint, int, float, bool, struct, map, slice, string - all separated by nil
+-	// - use nextvaluebytes to grab he's got each one, and decode it, and compare
+-	var inputs = []interface{}{
+-		uint64(7777),
+-		int64(9999),
+-		float64(12.25),
+-		true,
+-		false,
+-		map[string]uint64{"1": 1, "22": 22, "333": 333, "4444": 4444},
+-		[]string{"1", "22", "333", "4444"},
+-		// use *TestStruc, not *TestStrucFlex, as *TestStrucFlex is harder to compare with deep equal
+-		// Remember: *TestStruc was separated for this reason, affording comparing against other libraries
+-		newTestStruc(testDepth, testNumRepeatString, false, false, true),
+-		"1223334444",
+-	}
+-	var out []byte
++						// - encode uint, int, float, bool, struct, map, slice, string - all separated by nil
++						// - use nextvaluebytes to grab he's got each one, and decode it, and compare
++						var inputs = []interface{}{
++							uint64(7777),
++							int64(9999),
++							float64(12.25),
++							true,
++							false,
++							map[string]uint64{"1": 1, "22": 22, "333": 333, "4444": 4444},
++							[]string{"1", "22", "333", "4444"},
++							// use *TestStruc, not *TestStrucFlex, as *TestStrucFlex is harder to compare with deep equal
++							// Remember: *TestStruc was separated for this reason, affording comparing against other libraries
++							newTestStruc(testDepth, testNumRepeatString, false, false, true),
++							"1223334444",
++						}
++						var out []byte
+ 
+-	for i, v := range inputs {
+-		_ = i
+-		bs := testMarshalErr(v, h, t, "nextvaluebytes")
+-		out = append(out, bs...)
+-		bs2 := testMarshalErr(nil, h, t, "nextvaluebytes")
+-		out = append(out, bs2...)
+-		testReleaseBytes(bs)
+-		testReleaseBytes(bs2)
+-	}
+-	// out = append(out, []byte("----")...)
++						for i, v := range inputs {
++							_ = i
++							bs := testMarshalErr(v, h, t, "nextvaluebytes")
++							out = append(out, bs...)
++							bs2 := testMarshalErr(nil, h, t, "nextvaluebytes")
++							out = append(out, bs2...)
++							testReleaseBytes(bs)
++							testReleaseBytes(bs2)
++						}
++						// out = append(out, []byte("----")...)
+ 
+-	var valueBytes = make([][]byte, len(inputs)*2)
++						var valueBytes = make([][]byte, len(inputs)*2)
+ 
+-	d, oldReadBufferSize := testSharedCodecDecoder(out, h, testBasicHandle(h))
+-	for i := 0; i < len(inputs)*2; i++ {
+-		valueBytes[i] = d.d.nextValueBytes([]byte{})
+-		// bs := d.d.nextValueBytes([]byte{})
+-		// valueBytes[i] = make([]byte, len(bs))
+-		// copy(valueBytes[i], bs)
+-	}
+-	if testUseIoEncDec >= 0 {
+-		bh.ReaderBufferSize = oldReadBufferSize
+-	}
++						d, oldReadBufferSize := testSharedCodecDecoder(out, h, testBasicHandle(h))
++						for i := 0; i < len(inputs)*2; i++ {
++							valueBytes[i] = d.d.nextValueBytes([]byte{})
++							// bs := d.d.nextValueBytes([]byte{})
++							// valueBytes[i] = make([]byte, len(bs))
++							// copy(valueBytes[i], bs)
++						}
++						if testUseIoEncDec >= 0 {
++							bh.ReaderBufferSize = oldReadBufferSize
++						}
+ 
+-	defer func(b bool) { bh.InterfaceReset = b }(bh.InterfaceReset)
+-	bh.InterfaceReset = false
++						defer func(b bool) { bh.InterfaceReset = b }(bh.InterfaceReset)
++						bh.InterfaceReset = false
+ 
+-	var result interface{}
+-	for i := 0; i < len(inputs); i++ {
+-		// result = reflect.New(reflect.TypeOf(inputs[i])).Elem().Interface()
+-		result = reflect.Zero(reflect.TypeOf(inputs[i])).Interface()
+-		testUnmarshalErr(&result, valueBytes[i*2], h, t, "nextvaluebytes")
+-		testDeepEqualErr(inputs[i], result, t, "nextvaluebytes-1")
+-		result = nil
+-		testUnmarshalErr(&result, valueBytes[(i*2)+1], h, t, "nextvaluebytes")
+-		testDeepEqualErr(nil, result, t, "nextvaluebytes-2")
+-	}
+-}
+-            """
+-        },
++						var result interface{}
++						for i := 0; i < len(inputs); i++ {
++							// result = reflect.New(reflect.TypeOf(inputs[i])).Elem().Interface()
++							result = reflect.Zero(reflect.TypeOf(inputs[i])).Interface()
++							testUnmarshalErr(&result, valueBytes[i*2], h, t, "nextvaluebytes")
++							testDeepEqualErr(inputs[i], result, t, "nextvaluebytes-1")
++							result = nil
++							testUnmarshalErr(&result, valueBytes[(i*2)+1], h, t, "nextvaluebytes")
++							testDeepEqualErr(nil, result, t, "nextvaluebytes-2")
++						}
++					}
++				"""
++			},
++		},
+         ...
+     }
+ ]
+ 
+ def process():
++    """
++    git clone https://github.com/ugorji/go go-codec
++    cd go-codec/codec
++    git checkout XXX
++    go mod tidy
++    go test
++    """
+     pass
+\ No newline at end of file
+diff --git a/tsp/main/gather_datasets.py b/tsp/main/gather_datasets.py
+index 03995d3..0b770f9 100644
+--- a/tsp/main/gather_datasets.py
++++ b/tsp/main/gather_datasets.py
+@@ -3,16 +3,5 @@ import os
+ os.makedirs('cache/repos')
+ os.makedirs('cache/dataset')
+ 
+-def gather_go_codec():
+-    """
+-    git clone https://github.com/ugorji/go go-codec
+-    cd go-codec/codec
+-    git checkout XXX
+-    go mod tidy
+-    go test
+-    """
+-    pass
+-
+-
+ if __name__ == '__main__':
+     gather_go_codec()
+\ No newline at end of file
