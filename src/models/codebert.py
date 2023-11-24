@@ -51,7 +51,7 @@ class CodeBertTestPredictor(BaseTestPredictor):
         labels: Optional[torch.Tensor],
     ) -> torch.Tensor:
         N, WIND, PTOK = past_commit_input_ids.shape
-        assert past_commit_states.shape == (N, WIND, 3)
+        assert past_commit_states.shape == (N, WIND, 2)
         
         # encode each past commit's prompts
         p_input_ids = past_commit_input_ids.view(N*WIND, PTOK)
