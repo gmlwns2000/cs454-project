@@ -76,7 +76,7 @@ class SZZDataset(Dataset):
     def __getitem__(self, index):
         """
         returns
-            past_commit_states: Tensor(shape=(WINDOW, 3))
+            past_commit_states: Tensor(shape=(WINDOW, 2))
             past_commit_input_ids: Tensor(shape=(WINDOW, P_TOK))
             past_commit_attention_masks: Tensor(shape=(WINDOW, P_TOK))
             input_ids: Tensor(shape=(TOK,))
