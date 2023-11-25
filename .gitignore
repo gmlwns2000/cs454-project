@@ -31,3 +31,7 @@ plots/
 submission/
 submission*.zip
 sample_data.json
+
+apachejit/json/*
+apachejit/repos/*
+!apachejit/repos/setup.sh
