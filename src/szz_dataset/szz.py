@@ -1,10 +1,12 @@
 import json
 import os
 from typing import List
+
+import tqdm
 import torch
 from torch.utils.data import Dataset, random_split, DataLoader
-import tqdm
 import transformers
+import torch.nn.functional as F
 
 def collate_input_ids(input_ids: List[torch.Tensor], pad_token_id: int):
     max_len = max([len(i) for i in input_ids])
@@ -117,8 +119,6 @@ class SZZDataset(Dataset):
             'input_ids': input_ids,
             'label': label
         }
-
-import torch.nn.functional as F
 
 def collate_fn(pad_token_id, items):
     past_commit_states = torch.stack([item['past_commit_states'] for item in items], dim=0)
