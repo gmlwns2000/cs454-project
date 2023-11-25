@@ -8,7 +8,7 @@ import torch
 from torch import nn, optim
 import transformers
 
-from src.szz_dataset.szz import get_dataloaders
+from src.szz_dataset.szz import get_dataloaders, DatasetConfig
 from src import models
 
 def batch_to(batch, device):
@@ -20,11 +20,6 @@ def batch_to(batch, device):
         raise Exception()
 
 @dataclass
-class DatasetConfig:
-    window_size: int = 40
-    valid_ratio: float = 0.05
-
-@dataclass
 class TrainerConfig:
     epochs: int = 20
     batch_size: int = 1
@@ -34,7 +29,7 @@ class TrainerConfig:
     data_path: str = './src/szz_dataset/sample_data.json'
     model_id: str = 'codebert_test_predictor'
     experiment_name: str = 'default'
-    eval_steps: int = 200
+    eval_steps: int = 1000
     wandb_project_name: str = 'cs454'
     dataset_config: DatasetConfig = DatasetConfig()
 
@@ -70,8 +65,7 @@ class Trainer:
             path=self.config.data_path,
             batch_size=self.config.batch_size,
             tokenizer=transformers.AutoTokenizer.from_pretrained(self.model.tokenizer_id),
-            window_size=self.config.dataset_config.window_size,
-            valid_ratio=self.config.dataset_config.valid_ratio,
+            config=self.config.dataset_config
         )
     
     def init_optimizer(self):
@@ -130,7 +124,8 @@ class Trainer:
                     
                     if (self.steps % self.config.eval_steps) == 0:
                         result = self.evaluate()
-                        result_wandb = {f'eval/{item[0]}': item[1] for item in result.items()}
+                        result_wandb = {f'eval/{item[0]}': item[1] for item in result[0].items()}
+                        result_wandb.update({f'eval/{item[0]}': item[1] for item in result[1].items()})
                         wandb.log(result_wandb, step=self.steps)
                         
                         self.save()
@@ -182,6 +177,7 @@ class Trainer:
             f'epoch={self.epochs}, steps={self.steps} (micro_steps={self.micro_steps}) | '
             f'result@valid={result_valid}, result@unseen_valid={result_valid_unseen_project}'
         )
+        return result_valid, result_valid_unseen_project
     
     def main(self):
         # self.evaluate()
@@ -200,7 +196,8 @@ class Trainer:
             acc = self.evaluate()
             self.save()
             
-            result_wandb = {f'eval/{item[0]}': item[1] for item in acc.items()}
+            result_wandb = {f'eval/valid_{item[0]}': item[1] for item in acc[0].items()}
+            result_wandb.update({f'eval/valid_unseen_{item[0]}': item[1] for item in acc[1].items()})
             wandb.log(result_wandb, step=self.steps)
             
             accuracies.append(acc)
@@ -232,6 +229,16 @@ if __name__ == '__main__':
         type=str,
         default='default',
     )
+    parser.add_argument(
+        '--allow_oracle_past_state',
+        default=False,
+        action='store_true'
+    )
+    parser.add_argument(
+        '--window_size',
+        default=40,
+        type=int,
+    )
     
     args = parser.parse_args()
     
@@ -239,6 +246,10 @@ if __name__ == '__main__':
         model_id=args.model,
         data_path=args.data_path,
         experiment_name=args.experiment_name,
+        dataset_config=DatasetConfig(
+            window_size=args.window_size,
+            allow_oracle_past_state=args.allow_oracle_past_state
+        )
     )
     trainer = Trainer(config=config)
     trainer.main()

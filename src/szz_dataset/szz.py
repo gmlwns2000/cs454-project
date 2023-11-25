@@ -7,6 +7,13 @@ import torch
 from torch.utils.data import Dataset, random_split, DataLoader
 import transformers
 import torch.nn.functional as F
+from dataclasses import dataclass
+
+@dataclass
+class DatasetConfig:
+    window_size: int = 40
+    valid_ratio: float = 0.05
+    allow_oracle_past_state: bool = False
 
 def collate_input_ids(input_ids: List[torch.Tensor], pad_token_id: int):
     max_len = max([len(i) for i in input_ids])
@@ -27,12 +34,15 @@ class SZZDataset(Dataset):
         max_seq_len: int = 1022, 
         project_split = 'train', 
         project_split_num_valid = 1, 
-        window_size = 100
+        config = None
     ):
+        if config is None:
+            config = DatasetConfig()
+        self.config = config
         os.environ['TOKENIZERS_PARALLELISM'] = 'false'
         
         self.path = path
-        self.window = window_size
+        self.window = config.window_size
         
         with open(path, 'r') as f:
             data = json.load(f)
@@ -94,7 +104,7 @@ class SZZDataset(Dataset):
         for i in range(self.window):
             j = max(index - self.window + i, 0)
             past_commit = self.data[project][j]
-            if past_commit['reported_index'] < index:
+            if past_commit['reported_index'] < index or self.config.allow_oracle_past_state:
                 past_commit_states.append(int(past_commit['is_buggy']))
             else:
                 past_commit_states.append(0)
@@ -153,14 +163,16 @@ def collate_fn(pad_token_id, items):
         'labels': labels,
     }
 
-def get_dataloaders(path, batch_size, tokenizer, window_size=100, max_seq_len=1022, seed=42, num_workers=4, valid_ratio=0.05):
-    ds = SZZDataset(path, tokenizer, max_seq_len, window_size=window_size)
+def get_dataloaders(path, batch_size, tokenizer, config=None, max_seq_len=1022, seed=42, num_workers=4):
+    if config is None:
+        config = DatasetConfig()
+    ds = SZZDataset(path, tokenizer, max_seq_len, config=config)
     generator = torch.Generator().manual_seed(seed)
-    train_ds, valid_ds = random_split(ds, [1-valid_ratio, valid_ratio], generator=generator)
+    train_ds, valid_ds = random_split(ds, [1-config.valid_ratio, config.valid_ratio], generator=generator)
     train_loader = DataLoader(train_ds, batch_size, shuffle=True, collate_fn=lambda x: collate_fn(ds.pad_token_id, x), num_workers=num_workers)
     valid_loader = DataLoader(valid_ds, batch_size, shuffle=False, collate_fn=lambda x: collate_fn(ds.pad_token_id, x), num_workers=num_workers)
     
-    valid_unseen_project_ds = SZZDataset(path, tokenizer, max_seq_len, project_split='valid', window_size=window_size)
+    valid_unseen_project_ds = SZZDataset(path, tokenizer, max_seq_len, project_split='valid', config=config)
     valid_unseen_project_loader = DataLoader(valid_unseen_project_ds, batch_size, shuffle=False, collate_fn=lambda x: collate_fn(ds.pad_token_id, x), num_workers=num_workers)
     
     return train_loader, valid_loader, valid_unseen_project_loader
