@@ -1,10 +1,12 @@
 import json
 import os
 from typing import List
+
+import tqdm
 import torch
 from torch.utils.data import Dataset, random_split, DataLoader
-import tqdm
 import transformers
+import torch.nn.functional as F
 
 def collate_input_ids(input_ids: List[torch.Tensor], pad_token_id: int):
     max_len = max([len(i) for i in input_ids])
@@ -76,7 +78,7 @@ class SZZDataset(Dataset):
     def __getitem__(self, index):
         """
         returns
-            past_commit_states: Tensor(shape=(WINDOW, 3))
+            past_commit_states: Tensor(shape=(WINDOW, 2))
             past_commit_input_ids: Tensor(shape=(WINDOW, P_TOK))
             past_commit_attention_masks: Tensor(shape=(WINDOW, P_TOK))
             input_ids: Tensor(shape=(TOK,))
@@ -95,10 +97,10 @@ class SZZDataset(Dataset):
             if past_commit['reported_index'] < index:
                 past_commit_states.append(int(past_commit['is_buggy']))
             else:
-                past_commit_states.append(2)
+                past_commit_states.append(0)
             past_commit_input_ids.append(past_commit['input_ids'])
         past_commit_input_ids, past_commit_attention_masks = collate_input_ids(past_commit_input_ids, pad_token_id=self.pad_token_id)
-        past_commit_states_pt = torch.zeros((len(past_commit_states), 3))
+        past_commit_states_pt = torch.zeros((len(past_commit_states), 2))
         past_commit_states_pt.scatter_(
             dim=1, 
             index=torch.tensor(past_commit_states, dtype=torch.int64).unsqueeze(-1), 
@@ -117,8 +119,6 @@ class SZZDataset(Dataset):
             'input_ids': input_ids,
             'label': label
         }
-
-import torch.nn.functional as F
 
 def collate_fn(pad_token_id, items):
     past_commit_states = torch.stack([item['past_commit_states'] for item in items], dim=0)
