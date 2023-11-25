@@ -25,21 +25,21 @@ proj_repo = {
 }
 
 repo_names = [
-    # 'apache/activemq', 
+    'apache/activemq', 
     'apache/hbase', 
     'apache/spark', 
-    # 'apache/kafka', 
-    # 'apache/groovy', 
-    # 'apache/zeppelin', 
-    # 'apache/hadoop-hdfs', 
-    # 'apache/hadoop', 
-    # 'apache/flink', 
+    'apache/kafka', 
+    'apache/groovy', 
+    'apache/zeppelin', 
+    'apache/hadoop-hdfs', 
+    'apache/hadoop', 
+    'apache/flink', 
     # 'apache/camel', 
-    # 'apache/hadoop-mapreduce', 
-    # 'apache/ignite', 
-    # 'apache/cassandra', 
-    # 'apache/hive', 
-    # 'apache/zookeeper'
+    'apache/hadoop-mapreduce', 
+    'apache/ignite', 
+    'apache/cassandra', 
+    'apache/hive', 
+    'apache/zookeeper'
 ]
 
 
