@@ -243,5 +243,5 @@ def git_summary(diff):
   import_include_cnt = import_cnt + include_cnt
   
   summary["diff_info"] = ({"la_n_ld": line_add + line_del,"la": line_add, "ld": line_del, "add_class": add_class_cnt, "del_class": removed_class_cnt,"add_method": add_method_cnt, "del_method": removed_method_cnt, "add_func": add_func_cnt, "del_func": removed_func_cnt, "cond_compilation": cond_cnt, "import_include": import_include_cnt, "comment": comment_cnt, "func_touch": total_mod, "touch_large": large_mod})
-  return summary
+  return str(summary)
 
