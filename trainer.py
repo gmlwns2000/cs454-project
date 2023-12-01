@@ -216,13 +216,13 @@ if __name__ == '__main__':
     parser.add_argument(
         '--model', 
         type=str, 
-        default='codebert_test_predictor', 
+        default='codebert_atten_long', 
         choices=models.list_model()
     )
     parser.add_argument(
         '--data_path',
         type=str,
-        default='./src/szz_dataset/sample_data.json'
+        default='./src/szz_dataset/data/data.json'
     )
     parser.add_argument(
         '--experiment_name',
