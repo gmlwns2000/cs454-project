@@ -18,6 +18,7 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         self,
         hidden_size=768,
         state_hidden_size=32,
+        stride=1022,
         lstm_n_layers=1,
     ):
         super().__init__(tokenizer_id='codistai/codeBERT-small-v2')
@@ -26,6 +27,8 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         self.bert = RobertaModel.from_pretrained('codistai/codeBERT-small-v2')
         self.lm_hidden_size = self.bert.config.hidden_size
         self.num_heads = self.bert.config.num_attention_heads
+        
+        self.stride = stride
         
         self.p_bert_output_class_token = nn.Parameter(torch.randn(1, 1, self.lm_hidden_size))
         self.c_bert_output_class_token = nn.Parameter(torch.randn(1, 1, self.lm_hidden_size))
@@ -72,14 +75,10 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         
         p_bert_output_list = []
         
-        # append class token to the p_bert_output_list
-        p_bert_output_seg_class_token = self.p_bert_output_class_token.repeat(N*WIND,1,1)
-        p_bert_output_list.append(p_bert_output_seg_class_token)
-        
         # accumulate p_bert_output_seg
-        for i in range(0,PTOK,self.lm_hidden_size):
-            p_input_ids_seg = p_input_ids[:,i:i+self.lm_hidden_size]
-            p_attention_mask_seg = p_masks[:,i:i+self.lm_hidden_size]
+        for i in range(0,PTOK,self.stride):
+            p_input_ids_seg = p_input_ids[:,i:i+self.stride]
+            p_attention_mask_seg = p_masks[:,i:i+self.stride]
             p_bert_output_seg = self.bert(
                 input_ids=p_input_ids_seg,
                 attention_mask=p_attention_mask_seg
@@ -102,14 +101,18 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         p_bert_output_query = p_bert_output_query.view(N_WIND, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
         p_bert_output_key = p_bert_output_key.view(N_WIND, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
         p_bert_output_value = p_bert_output_value.view(N_WIND, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
-        p_bert_output_context = F.scaled_dot_product_attention(
+        p_bert_output_atten = F.scaled_dot_product_attention(
             query=p_bert_output_query,
             key=p_bert_output_key,
             value=p_bert_output_value,
             dropout_p=0.1,
         )
-        p_bert_output_context = p_bert_output_context.permute(0, 2, 1, 3).reshape(N_WIND, SEG_NUM, H * HEAD_DIM)[:,0,:]
+        
+        # Find the context from the attention by averaging over segments
+        p_bert_output_context = p_bert_output_atten.sum(dim=1) / SEG_NUM
         p_bert_output_context = p_bert_output_context.reshape(N, WIND, -1)
+        
+        print("p_bert_output_context size: ", p_bert_output_context.size())
         
         # encode each past commit's states (0: not bug, 1: bug, 2: unknown)
         p_states = self.past_commit_state_encoder(past_commit_states)
@@ -120,13 +123,11 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         c_bert_output_list = []
         
         # append class token to the c_bert_output_list
-        c_bert_output_seg_class_token = self.c_bert_output_class_token.repeat(N,1,1)
-        c_bert_output_list.append(c_bert_output_seg_class_token)
         
         # accumulate c_bert_output_seg
-        for i in range(0,PTOK,self.lm_hidden_size):
-            c_input_ids_seg = input_ids[:,i:i+self.lm_hidden_size]
-            c_attention_mask_seg = attention_mask[:,i:i+self.lm_hidden_size]
+        for i in range(0,PTOK,self.stride):
+            c_input_ids_seg = input_ids[:,i:i+self.stride]
+            c_attention_mask_seg = attention_mask[:,i:i+self.stride]
             c_bert_output_seg = self.bert(
                 input_ids=c_input_ids_seg,
                 attention_mask=c_attention_mask_seg
@@ -148,14 +149,15 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         c_bert_output_query = c_bert_output_query.view(N, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
         c_bert_output_key = c_bert_output_key.view(N, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
         c_bert_output_value = c_bert_output_value.view(N, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
-        c_bert_output_context = F.scaled_dot_product_attention(
+        c_bert_output_atten = F.scaled_dot_product_attention(
             query=c_bert_output_query,
             key=c_bert_output_key,
             value=c_bert_output_value,
             dropout_p=0.1,
         )
         
-        c_bert_output_context = c_bert_output_context.permute(0, 2, 1, 3).reshape(N, SEG_NUM, H * HEAD_DIM)[:,0,:]
+        # Find the context from the attention by averaging over segments
+        c_bert_output_context = c_bert_output_atten.sum(dim=1) / SEG_NUM
         c_bert_output_context = c_bert_output_context.reshape(N, 1, -1)
         
         # now perform attention using two contexts

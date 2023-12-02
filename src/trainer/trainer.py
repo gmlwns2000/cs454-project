@@ -238,6 +238,11 @@ if __name__ == '__main__':
     
     # dataset options
     parser.add_argument(
+        '--max_seq_len',
+        default=1022*10,
+        type=int
+    )
+    parser.add_argument(
         '--data_path',
         type=str,
         default='./cache/data.json'
@@ -267,6 +272,7 @@ if __name__ == '__main__':
         experiment_name=args.experiment_name,
         eval_steps=args.eval_steps,
         dataset_config=DatasetConfig(
+            max_seq_len=args.max_seq_len,
             window_size=args.window_size,
             allow_oracle_past_state=args.allow_oracle_past_state,
             past_commit_filter=args.past_commit_filter,
