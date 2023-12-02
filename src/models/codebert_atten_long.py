@@ -18,7 +18,6 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         self,
         hidden_size=768,
         state_hidden_size=32,
-        stride=1022,
         lstm_n_layers=1,
     ):
         super().__init__(tokenizer_id='codistai/codeBERT-small-v2')
@@ -28,7 +27,7 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         self.lm_hidden_size = self.bert.config.hidden_size
         self.num_heads = self.bert.config.num_attention_heads
         
-        self.stride = stride
+        self.stride = (self.bert.config.max_position_embeddings - 2)
         
         self.p_bert_output_class_token = nn.Parameter(torch.randn(1, 1, self.lm_hidden_size))
         self.c_bert_output_class_token = nn.Parameter(torch.randn(1, 1, self.lm_hidden_size))
@@ -69,6 +68,8 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         N, WIND, PTOK = past_commit_input_ids.shape
         assert past_commit_states.shape == (N, WIND, 2)
         
+        print("PTOK: ", PTOK)
+        
         # encode each past commit's prompts
         p_input_ids = past_commit_input_ids.view(N*WIND, PTOK)
         p_masks = past_commit_attention_masks.view(N*WIND, PTOK)
@@ -107,12 +108,12 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
             value=p_bert_output_value,
             dropout_p=0.1,
         )
+        p_bert_output_atten = p_bert_output_atten.permute(0, 2, 1, 3)
         
         # Find the context from the attention by averaging over segments
-        p_bert_output_context = p_bert_output_atten.sum(dim=1) / SEG_NUM
+        p_bert_output_context = p_bert_output_atten.sum(dim=1)
+        p_bert_output_context = p_bert_output_context / SEG_NUM
         p_bert_output_context = p_bert_output_context.reshape(N, WIND, -1)
-        
-        print("p_bert_output_context size: ", p_bert_output_context.size())
         
         # encode each past commit's states (0: not bug, 1: bug, 2: unknown)
         p_states = self.past_commit_state_encoder(past_commit_states)
@@ -155,10 +156,11 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
             value=c_bert_output_value,
             dropout_p=0.1,
         )
+        c_bert_output_atten = c_bert_output_atten.permute(0, 2, 1, 3)
         
         # Find the context from the attention by averaging over segments
         c_bert_output_context = c_bert_output_atten.sum(dim=1) / SEG_NUM
-        c_bert_output_context = c_bert_output_context.reshape(N, 1, -1)
+        c_bert_output_context = c_bert_output_context.reshape(N, -1)
         
         # now perform attention using two contexts
         c_query = self.current_commit_query(c_bert_output_context)
@@ -177,9 +179,11 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
             dropout_p=0.1,
         )
         context = context.permute(0, 2, 1, 3).reshape(N, H * HEAD_DIM)
+        print("context size: ", context.size())
         
         # calcuate logits using pooled current commit encoding
-        c_pool = torch.cat([c_bert_output, context], dim=-1)
+        c_pool = torch.cat([c_bert_output_context, context], dim=-1)
+        print("c_pool size: ", c_pool.size())
         logits = self.classifier(c_pool)
         
         loss = None
@@ -197,4 +201,3 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
 @register('codebert_atten_long')
 def codebert_atten_long():
     return CodeBertAttenTestPredictorLong()
-

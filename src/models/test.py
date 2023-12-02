@@ -27,6 +27,10 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         self.lm_hidden_size = self.bert.config.hidden_size
         self.num_heads = self.bert.config.num_attention_heads
         
+        self.stride = (self.bert.config.max_position_embeddings - 2)
+        
+        print("self.stride: ", self.stride)
+        
         self.p_bert_output_class_token = nn.Parameter(torch.randn(1, 1, self.lm_hidden_size))
         self.c_bert_output_class_token = nn.Parameter(torch.randn(1, 1, self.lm_hidden_size))
         
@@ -72,14 +76,10 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         
         p_bert_output_list = []
         
-        # append class token to the p_bert_output_list
-        p_bert_output_seg_class_token = self.p_bert_output_class_token.repeat(N*WIND,1,1)
-        p_bert_output_list.append(p_bert_output_seg_class_token)
-        
         # accumulate p_bert_output_seg
-        for i in range(0,PTOK,self.lm_hidden_size):
-            p_input_ids_seg = p_input_ids[:,i:i+self.lm_hidden_size]
-            p_attention_mask_seg = p_masks[:,i:i+self.lm_hidden_size]
+        for i in range(0,PTOK,self.stride):
+            p_input_ids_seg = p_input_ids[:,i:i+self.stride]
+            p_attention_mask_seg = p_masks[:,i:i+self.stride]
             p_bert_output_seg = self.bert(
                 input_ids=p_input_ids_seg,
                 attention_mask=p_attention_mask_seg
@@ -90,25 +90,34 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         
         # concatenate p_bert_output_segs 
         p_bert_output = torch.cat(p_bert_output_list, dim=1)
+        print("p_bert_output size: ", p_bert_output.size())
         
         p_bert_output_query = self.p_bert_query(p_bert_output)
         p_bert_output_key = self.p_bert_key(p_bert_output)
         p_bert_output_value = self.p_bert_value(p_bert_output)
 
+        # find the p_bert_output context via attention
         H = self.num_heads
         HEAD_DIM = p_bert_output_key.shape[-1] // H
         N_WIND, SEG_NUM, _ = p_bert_output_key.shape
         p_bert_output_query = p_bert_output_query.view(N_WIND, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
         p_bert_output_key = p_bert_output_key.view(N_WIND, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
+        print("p_bert_output_key size: ", p_bert_output_key.size())
         p_bert_output_value = p_bert_output_value.view(N_WIND, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
-        p_bert_output_context = F.scaled_dot_product_attention(
+        p_bert_output_atten = F.scaled_dot_product_attention(
             query=p_bert_output_query,
             key=p_bert_output_key,
             value=p_bert_output_value,
             dropout_p=0.1,
         )
-        p_bert_output_context = p_bert_output_context.permute(0, 2, 1, 3).reshape(N_WIND, SEG_NUM, H * HEAD_DIM)[:,0,:]
+        p_bert_output_atten = p_bert_output_atten.permute(0, 2, 1, 3)
+        
+        # Find the context from the attention by averaging over segments
+        p_bert_output_context = p_bert_output_atten.sum(dim=1)
+        p_bert_output_context = p_bert_output_context / SEG_NUM
         p_bert_output_context = p_bert_output_context.reshape(N, WIND, -1)
+        
+        print("p_bert_output_context size: ", p_bert_output_context.size())
         
         # encode each past commit's states (0: not bug, 1: bug, 2: unknown)
         p_states = self.past_commit_state_encoder(past_commit_states)
@@ -119,12 +128,11 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         c_bert_output_list = []
         
         # append class token to the c_bert_output_list
-        c_bert_output_seg_class_token = self.c_bert_output_class_token.repeat(N,1,1)
-        c_bert_output_list.append(c_bert_output_seg_class_token)
         
-        for i in range(0,PTOK,self.lm_hidden_size):
-            c_input_ids_seg = input_ids[:,i:i+self.lm_hidden_size]
-            c_attention_mask_seg = attention_mask[:,i:i+self.lm_hidden_size]
+        # accumulate c_bert_output_seg
+        for i in range(0,PTOK,self.stride):
+            c_input_ids_seg = input_ids[:,i:i+self.stride]
+            c_attention_mask_seg = attention_mask[:,i:i+self.stride]
             c_bert_output_seg = self.bert(
                 input_ids=c_input_ids_seg,
                 attention_mask=c_attention_mask_seg
@@ -139,23 +147,28 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         c_bert_output_key = self.c_bert_key(c_bert_output)
         c_bert_output_value = self.c_bert_value(c_bert_output)
         
+        # find the c_bert_output context via attention
         H = self.num_heads
         HEAD_DIM = c_bert_output_key.shape[-1] // H
         N, SEG_NUM, _ = c_bert_output_key.shape
         c_bert_output_query = c_bert_output_query.view(N, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
         c_bert_output_key = c_bert_output_key.view(N, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
         c_bert_output_value = c_bert_output_value.view(N, SEG_NUM, H, HEAD_DIM).permute(0, 2, 1, 3)
-        c_bert_output_context = F.scaled_dot_product_attention(
+        c_bert_output_atten = F.scaled_dot_product_attention(
             query=c_bert_output_query,
             key=c_bert_output_key,
             value=c_bert_output_value,
             dropout_p=0.1,
         )
+        c_bert_output_atten = c_bert_output_atten.permute(0, 2, 1, 3)
         
-        c_bert_output_context = c_bert_output_context.permute(0, 2, 1, 3).reshape(N, SEG_NUM, H * HEAD_DIM)[:,0,:]
-        c_bert_output_context = c_bert_output_context.reshape(N, 1, -1)
+        # Find the context from the attention by averaging over segments
+        c_bert_output_context = c_bert_output_atten.sum(dim=1) / SEG_NUM
+        c_bert_output_context = c_bert_output_context.reshape(N, -1)
         
-        # now perform attention
+        print("c_bert_output_context size: ", c_bert_output_context.size())
+        
+        # now perform attention using two contexts
         c_query = self.current_commit_query(c_bert_output_context)
         p_key = self.past_commit_state_key(p_commits)
         p_value = self.past_commit_state_value(p_commits)
@@ -172,10 +185,14 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
             dropout_p=0.1,
         )
         context = context.permute(0, 2, 1, 3).reshape(N, H * HEAD_DIM)
+        print("context size: ", context.size())
         
         # calcuate logits using pooled current commit encoding
-        c_pool = torch.cat([c_bert_output, context], dim=-1)
+        c_pool = torch.cat([c_bert_output_context, context], dim=-1)
+        print("c_pool size: ", c_pool.size())
         logits = self.classifier(c_pool)
+        
+        sys.exit("out")
         
         loss = None
         if labels is not None:
@@ -193,13 +210,15 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
 def codebert_atten_long():
     return CodeBertAttenTestPredictorLong()
 
-# past_commit_states = torch.randint(2,(1,5,2)).type(torch.float)
-# past_commit_input_ids = torch.randint(10,(1,5,2044))
-# past_commit_attention_masks = torch.randint(10,(1,5,2044))
-# input_ids = torch.randint(10, (1,4088))
-# attention_mask = torch.randint(10, (1,4088))
-# labels = torch.randint(2,(1,2))
 
-# model = CodeBertAttenTestPredictorLong()
 
-# model(past_commit_states,past_commit_input_ids,past_commit_attention_masks,input_ids,attention_mask,labels)
+past_commit_states = torch.randint(2,(1,5,2)).type(torch.float)
+past_commit_input_ids = torch.randint(10,(1,5,2044))
+past_commit_attention_masks = torch.randint(10,(1,5,2044))
+input_ids = torch.randint(10, (1,4088))
+attention_mask = torch.randint(10, (1,4088))
+labels = torch.randint(2,(1,2))
+
+model = CodeBertAttenTestPredictorLong()
+
+model(past_commit_states,past_commit_input_ids,past_commit_attention_masks,input_ids,attention_mask,labels)
