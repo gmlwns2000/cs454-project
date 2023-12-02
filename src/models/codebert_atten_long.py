@@ -121,8 +121,6 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         
         c_bert_output_list = []
         
-        # append class token to the c_bert_output_list
-        
         # accumulate c_bert_output_seg
         for i in range(0,PTOK,self.stride):
             c_input_ids_seg = input_ids[:,i:i+self.stride]
@@ -177,11 +175,9 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
             dropout_p=0.1,
         )
         context = context.permute(0, 2, 1, 3).reshape(N, H * HEAD_DIM)
-        print("context size: ", context.size())
         
         # calcuate logits using pooled current commit encoding
         c_pool = torch.cat([c_bert_output_context, context], dim=-1)
-        print("c_pool size: ", c_pool.size())
         logits = self.classifier(c_pool)
         
         loss = None
