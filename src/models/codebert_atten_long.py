@@ -68,8 +68,6 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         N, WIND, PTOK = past_commit_input_ids.shape
         assert past_commit_states.shape == (N, WIND, 2)
         
-        print("PTOK: ", PTOK)
-        
         # encode each past commit's prompts
         p_input_ids = past_commit_input_ids.view(N*WIND, PTOK)
         p_masks = past_commit_attention_masks.view(N*WIND, PTOK)
