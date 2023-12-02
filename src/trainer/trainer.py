@@ -230,8 +230,18 @@ if __name__ == '__main__':
         default=1000,
         type=int,
     )
+    parser.add_argument(
+        '--gradient_accumulation_steps',
+        default=8,
+        type=int,
+    )
     
     # dataset options
+    parser.add_argument(
+        '--batch_size',
+        type=int,
+        default=1,
+    )
     parser.add_argument(
         '--data_path',
         type=str,
@@ -261,6 +271,8 @@ if __name__ == '__main__':
         data_path=args.data_path,
         experiment_name=args.experiment_name,
         eval_steps=args.eval_steps,
+        batch_size=args.batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         dataset_config=DatasetConfig(
             window_size=args.window_size,
             allow_oracle_past_state=args.allow_oracle_past_state,
