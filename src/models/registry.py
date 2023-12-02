@@ -1,6 +1,6 @@
 REGISTRY = {}
 
-def register(name):
+def register(name, desc=""):
     global REGISTRY
     
     def wrapper(fn):

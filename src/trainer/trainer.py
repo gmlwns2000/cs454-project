@@ -124,8 +124,8 @@ class Trainer:
                     
                     if (self.steps % self.config.eval_steps) == 0:
                         result = self.evaluate()
-                        result_wandb = {f'eval/{item[0]}': item[1] for item in result[0].items()}
-                        result_wandb.update({f'eval/{item[0]}': item[1] for item in result[1].items()})
+                        result_wandb = {f'eval/valid_{item[0]}': item[1] for item in result[0].items()}
+                        result_wandb.update({f'eval/valid_unseen_{item[0]}': item[1] for item in result[1].items()})
                         wandb.log(result_wandb, step=self.steps)
                         
                         self.save()
@@ -213,6 +213,7 @@ class Trainer:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    # training options
     parser.add_argument(
         '--model', 
         type=str, 
@@ -230,14 +231,32 @@ if __name__ == '__main__':
         default='default',
     )
     parser.add_argument(
-        '--allow_oracle_past_state',
-        default=False,
-        action='store_true'
+        '--eval_steps',
+        default=1000,
+        type=int,
+    )
+    
+    # dataset options
+    parser.add_argument(
+        '--data_path',
+        type=str,
+        default='./cache/data.json'
     )
     parser.add_argument(
         '--window_size',
         default=40,
         type=int,
+    )
+    parser.add_argument(
+        '--past_commit_filter',
+        default='none',
+        type=str,
+        choices=['none', 'only_buggy']
+    )
+    parser.add_argument(
+        '--allow_oracle_past_state',
+        default=False,
+        action='store_true'
     )
     
     args = parser.parse_args()
@@ -246,9 +265,11 @@ if __name__ == '__main__':
         model_id=args.model,
         data_path=args.data_path,
         experiment_name=args.experiment_name,
+        eval_steps=args.eval_steps,
         dataset_config=DatasetConfig(
             window_size=args.window_size,
-            allow_oracle_past_state=args.allow_oracle_past_state
+            allow_oracle_past_state=args.allow_oracle_past_state,
+            past_commit_filter=args.past_commit_filter,
         )
     )
     trainer = Trainer(config=config)

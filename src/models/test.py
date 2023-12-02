@@ -95,7 +95,6 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         p_bert_output_key = self.p_bert_key(p_bert_output)
         p_bert_output_value = self.p_bert_value(p_bert_output)
 
-        # find the p_bert_output context via attention
         H = self.num_heads
         HEAD_DIM = p_bert_output_key.shape[-1] // H
         N_WIND, SEG_NUM, _ = p_bert_output_key.shape
@@ -123,7 +122,6 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         c_bert_output_seg_class_token = self.c_bert_output_class_token.repeat(N,1,1)
         c_bert_output_list.append(c_bert_output_seg_class_token)
         
-        # accumulate c_bert_output_seg
         for i in range(0,PTOK,self.lm_hidden_size):
             c_input_ids_seg = input_ids[:,i:i+self.lm_hidden_size]
             c_attention_mask_seg = attention_mask[:,i:i+self.lm_hidden_size]
@@ -141,7 +139,6 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         c_bert_output_key = self.c_bert_key(c_bert_output)
         c_bert_output_value = self.c_bert_value(c_bert_output)
         
-        # find the c_bert_output context via attention
         H = self.num_heads
         HEAD_DIM = c_bert_output_key.shape[-1] // H
         N, SEG_NUM, _ = c_bert_output_key.shape
@@ -158,7 +155,7 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
         c_bert_output_context = c_bert_output_context.permute(0, 2, 1, 3).reshape(N, SEG_NUM, H * HEAD_DIM)[:,0,:]
         c_bert_output_context = c_bert_output_context.reshape(N, 1, -1)
         
-        # now perform attention using two contexts
+        # now perform attention
         c_query = self.current_commit_query(c_bert_output_context)
         p_key = self.past_commit_state_key(p_commits)
         p_value = self.past_commit_state_value(p_commits)
@@ -196,3 +193,13 @@ class CodeBertAttenTestPredictorLong(BaseTestPredictor):
 def codebert_atten_long():
     return CodeBertAttenTestPredictorLong()
 
+# past_commit_states = torch.randint(2,(1,5,2)).type(torch.float)
+# past_commit_input_ids = torch.randint(10,(1,5,2044))
+# past_commit_attention_masks = torch.randint(10,(1,5,2044))
+# input_ids = torch.randint(10, (1,4088))
+# attention_mask = torch.randint(10, (1,4088))
+# labels = torch.randint(2,(1,2))
+
+# model = CodeBertAttenTestPredictorLong()
+
+# model(past_commit_states,past_commit_input_ids,past_commit_attention_masks,input_ids,attention_mask,labels)

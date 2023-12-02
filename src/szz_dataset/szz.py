@@ -1,19 +1,20 @@
 import json
 import os
-from typing import List
+from typing import List, Literal
+from dataclasses import dataclass, field
 
 import tqdm
 import torch
 from torch.utils.data import Dataset, random_split, DataLoader
 import transformers
 import torch.nn.functional as F
-from dataclasses import dataclass
 
 @dataclass
 class DatasetConfig:
     window_size: int = 40
     valid_ratio: float = 0.05
     allow_oracle_past_state: bool = False
+    past_commit_filter: Literal['none', 'only_buggy'] = 'none'
 
 def collate_input_ids(input_ids: List[torch.Tensor], pad_token_id: int):
     max_len = max([len(i) for i in input_ids])
@@ -99,16 +100,35 @@ class SZZDataset(Dataset):
         project = self.index_to_project[index]
         index = index - self.index_to_base[index]
         
+        past_commits = []
+        if self.config.past_commit_filter == 'none':
+            for i in range(self.window):
+                j = max(index - self.window + i, 0)
+                past_commit = self.data[project][j]
+                past_commits.append(past_commit)
+        elif self.config.past_commit_filter == 'only_buggy':
+            j = max(index - 1, 0)
+            while len(past_commits) < self.window:
+                if j == 0:
+                    past_commits.append(self.data[project][j])
+                else:
+                    item = self.data[project][j]
+                    if item['is_buggy'] > 0.5:
+                        past_commits.append(item)
+                    j -= 1
+                    j = max(j, 0)
+        else:
+            raise Exception(self.config.past_commit_filter)
+        
         past_commit_states = []
         past_commit_input_ids = []
-        for i in range(self.window):
-            j = max(index - self.window + i, 0)
-            past_commit = self.data[project][j]
+        for past_commit in past_commits:
             if past_commit['reported_index'] < index or self.config.allow_oracle_past_state:
                 past_commit_states.append(int(past_commit['is_buggy']))
             else:
                 past_commit_states.append(0)
             past_commit_input_ids.append(past_commit['input_ids'])
+        
         past_commit_input_ids, past_commit_attention_masks = collate_input_ids(past_commit_input_ids, pad_token_id=self.pad_token_id)
         past_commit_states_pt = torch.zeros((len(past_commit_states), 2))
         past_commit_states_pt.scatter_(
